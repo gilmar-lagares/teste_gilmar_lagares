@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intuitive Care - Teste</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div id="app" class="max-w-6xl mx-auto">
+        
+        <h1 class="text-3xl font-bold mb-6 text-blue-800">Monitor de Operadoras</h1>
+
+        <div class="mb-6 bg-white p-4 rounded shadow">
+            <input 
+                v-model="search" 
+                @input="fetchOperadoras"
+                placeholder="Buscar por Razão Social..." 
+                class="w-full p-2 border rounded"
+            >
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-xl font-semibold mb-4">Lista de Operadoras</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-gray-200">
+                                <th class="p-2">Operadora</th>
+                                <th class="p-2">UF</th>
+                                <th class="p-2">Total Despesas</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="op in operadoras" :key="op.RegistroANS" class="border-b hover:bg-gray-50">
+                                <td class="p-2 text-sm">{{ op.Razao_Social }}</td>
+                                <td class="p-2">{{ op.UF }}</td>
+                                <td class="p-2 font-mono text-blue-600">R$ {{ formatMoney(op.Total_Despesas) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4 flex justify-between items-center">
+                    <button @click="page--" :disabled="page <= 1" class="px-4 py-2 bg-gray-200 rounded disabled:opacity-50">Anterior</button>
+                    <span>Página {{ page }}</span>
+                    <button @click="page++" class="px-4 py-2 bg-gray-200 rounded">Próximo</button>
+                </div>
+            </div>
+
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-xl font-semibold mb-4">Despesas por UF</h2>
+                <canvas id="chartUF"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted, watch } = Vue;
+
+        createApp({
+            setup() {
+                const operadoras = ref([]);
+                const search = ref("");
+                const page = ref(1);
+                const chartInstance = ref(null);
+
+                // Formatar moeda
+                const formatMoney = (value) => {
+                    return parseFloat(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                };
+
+                // Buscar dados da API
+                const fetchOperadoras = async () => {
+                    try {
+                        const params = new URLSearchParams({
+                            page: page.value,
+                            limit: 10,
+                            search: search.value
+                        });
+                        const res = await fetch(`http://localhost:8000/api/operadoras?${params}`);
+                        const json = await res.json();
+                        operadoras.value = json.data;
+                    } catch (e) {
+                        console.error("Erro ao conectar na API", e);
+                    }
+                };
+
+                // Buscar estatísticas para o gráfico
+                const fetchStats = async () => {
+                    try {
+                        const res = await fetch(`http://localhost:8000/api/estatisticas`);
+                        const json = await res.json();
+                        renderChart(json.distribuicao_uf);
+                    } catch (e) {
+                        console.error("Erro stats", e);
+                    }
+                };
+
+                const renderChart = (data) => {
+                    const ctx = document.getElementById('chartUF');
+                    const labels = Object.keys(data).slice(0, 10);
+                    const values = Object.values(data).slice(0, 10);
+
+                    if (chartInstance.value) chartInstance.value.destroy();
+
+                    chartInstance.value = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Total Despesas',
+                                data: values,
+                                backgroundColor: '#3b82f6'
+                            }]
+                        }
+                    });
+                };
+
+                // Reagir a mudanças de página
+                watch(page, fetchOperadoras);
+
+                onMounted(() => {
+                    fetchOperadoras();
+                    fetchStats();
+                });
+
+                return { operadoras, search, page, formatMoney, fetchOperadoras };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
